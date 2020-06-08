@@ -1,6 +1,6 @@
 <?php
 /**
- * アクセスカウンターAPI
+ * アクセスカウンターAPI（DB版）
  */
  
 // デバッグ時にエラーを画面に表示したい場合は以下をコメントアウトする
@@ -9,13 +9,22 @@
 //----------------------------------------
 // 定数
 // ---------------------------------------
-define('DATA_FILE', 'data.txt');
+define('DB_DSN', 'mysql:dbname=access;host=127.0.0.1');		// 接続先
+define('DB_USER', 'senpai');	// MySQLのID
+define('DB_PW', 'indocurry');	// MySQLのパスワード
 
 //----------------------------------------
 // メイン処理
 //----------------------------------------
+// DBに接続
+$dbh = connectDB(DB_DSN, DB_USER, DB_PW);
+
+
+// DBに1レコード追加する
+addCounter($dbh);
+
 // 現在の値を取得（カウントアップする）
-$count = getCounter(DATA_FILE);
+$count = getCounter($dbh);
 
 // 現在の値を返却する
 header('Content-type: application/json');
@@ -24,26 +33,57 @@ echo json_encode([
 	  , 'count' => $count
 ]);
 
+
+
 /**
- * カウンターの値を取得
+ * DBサーバーへ接続
+ *
+ * @param	string $dsn	接続先の情報（IPアドレス、DB名など）
+ * @param	string $user	ユーザーID
+ * @param	string $pw		パスワード
+ * @return object
  */
- 
-function getCounter($file){
-	// データを取得する
-	$fp = fopen($file, 'r+');	// ファイルを読み込み＋書き込みモードで開く
-	flock($fp, LOCK_EX);			// ファイルをロックする
-	$buff = (int)fgets($fp);		// ファイルから1行読み込み
+function connectDB($dsn, $user, $pw){
+	$dbh = new PDO($dsn, $user, $pw);	// 接続
+	return($dbh);
+}
+
+/**
+ * 1レコード追加する
+ *
+ * @param		object $dbh
+ * @return		boolean
+ */
+function addCounter($dbh){
+	// SQLを準備
+	$sql = 'INSERT INTO access_log(accesstime) VALUES(now())';
 	
-	// ファイルを空にする
-	ftruncate($fp, 0);	// ファイルサイズをゼロにする
-	fseek($fp, 0);		// ファイルポインタを先頭に戻す
+	// 実行する
+	$sth = $dbh->prepare($sql);		// SQLを解析
+	$ret = $sth->execute();			// 実行
 	
-	// +1した数値を書き込む
-	fwrite($fp, $buff+1);
+	return($ret);
+}
+/**
+ * 現在のレコード数を集計する
+ *
+ * @param	object $dbh
+ * @return integer|boolean
+ */
+function getCounter($dbh){
+	// SQLを準備
+	$sql = 'SELECT count(*) as count FROM access_log';
 	
-	// ファイルを閉じる
-	flock($fp, LOCK_UN);	// ファイルのロックを解除
-	fclose($fp);			// ファイルを閉じる
+	// 実行する
+	$sth = $dbh->prepare($sql);		// SQLを解析
+	$sth->execute();					// 実行
 	
-	return($buff);
+	// 実行結果を取得
+	$buff = $sth->fetch(PDO::FETCH_ASSOC);
+	if( $buff === false ){
+		return(false);
+	}
+	else{
+		return( $buff['count'] );
+	}
 }
